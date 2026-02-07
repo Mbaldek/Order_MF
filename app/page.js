@@ -25,7 +25,7 @@ export default function HomePage() {
           <aside className="heroMedia" style={{ overflow: "hidden" }}>
             {/* Placeholder: mets ton vrai visuel dans public/assets/eventmain.jpg */}
             <img
-              src="/assets/eventmain.jpg"
+              src="/asset/eventmain.jpg"
               alt="Event"
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
               onError={(e) => {
