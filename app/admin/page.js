@@ -6,7 +6,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { useEffect, useMemo, useState } from "react";
 
 function euros(cents) {
-  return (cents / 100).toFixed(2);
+  return (Number(cents || 0) / 100).toFixed(2);
 }
 
 export default function AdminPage() {
@@ -20,6 +20,7 @@ export default function AdminPage() {
   const [tags, setTags] = useState([]);
   const [itemTags, setItemTags] = useState([]);
   const [orderDays, setOrderDays] = useState([]);
+  const [orders, setOrders] = useState([]);
 
   const [newDay, setNewDay] = useState({ day_date: "", label: "" });
   const [newTag, setNewTag] = useState({ code: "", label: "", color: "#d47a77" });
@@ -29,6 +30,13 @@ export default function AdminPage() {
     description: "",
     price_ht_cents: 0,
     image_url: "",
+  });
+
+  const [eventEdit, setEventEdit] = useState({
+    name: "",
+    logo_url: "",
+    hero_image_url: "",
+    is_active: true,
   });
 
   async function loadAll() {
@@ -68,20 +76,35 @@ export default function AdminPage() {
       .from("order_days")
       .select("id, created_at, day_date, day_label, entree, plat, dessert, delivery, status, employee_name, proof_url, diet_notes, drinks, orders:orders(id, company, stand, first_name, last_name, phone, email)")
       .order("created_at", { ascending: false })
-      .limit(200);
+      .limit(300);
+
+    const o = await supabase
+      .from("orders")
+      .select("id, created_at, company, stand, first_name, last_name, phone, email")
+      .order("created_at", { ascending: false })
+      .limit(300);
 
     if (d.error) return setErr(d.error.message), setLoading(false);
     if (it.error) return setErr(it.error.message), setLoading(false);
     if (tg.error) return setErr(tg.error.message), setLoading(false);
     if (mt.error) return setErr(mt.error.message), setLoading(false);
     if (od.error) return setErr(od.error.message), setLoading(false);
+    if (o.error) return setErr(o.error.message), setLoading(false);
 
     setEvent(ev.data);
+    setEventEdit({
+      name: ev.data?.name || "",
+      logo_url: ev.data?.logo_url || "",
+      hero_image_url: ev.data?.hero_image_url || "",
+      is_active: !!ev.data?.is_active,
+    });
+
     setDays(d.data || []);
     setItems(it.data || []);
     setTags(tg.data || []);
     setItemTags(mt.data || []);
     setOrderDays(od.data || []);
+    setOrders(o.data || []);
     setLoading(false);
   }
 
@@ -115,6 +138,34 @@ export default function AdminPage() {
     return s;
   }, [orderDays]);
 
+  const ordersGrouped = useMemo(() => {
+    const byOrderId = new Map();
+    for (const od of orderDays) {
+      const oid = od.orders?.id;
+      if (!oid) continue;
+      if (!byOrderId.has(oid)) byOrderId.set(oid, { order: od.orders, days: [] });
+      byOrderId.get(oid).days.push(od);
+    }
+    return Array.from(byOrderId.values());
+  }, [orderDays]);
+
+  async function saveEvent() {
+    setErr("");
+    if (!event?.id) return;
+
+    const res = await supabase
+      .from("event_config")
+      .update({
+        name: eventEdit.name || null,
+        logo_url: eventEdit.logo_url || null,
+        hero_image_url: eventEdit.hero_image_url || null,
+      })
+      .eq("id", event.id);
+
+    if (res.error) return setErr(res.error.message);
+    loadAll();
+  }
+
   async function addEventDay() {
     setErr("");
     if (!event?.id) return;
@@ -141,12 +192,14 @@ export default function AdminPage() {
   async function addTag() {
     setErr("");
     if (!newTag.code || !newTag.label) return setErr("code + label requis.");
+
     const res = await supabase.from("tags").insert({
       code: newTag.code.trim(),
       label: newTag.label.trim(),
       color: newTag.color || "#d47a77",
     });
     if (res.error) return setErr(res.error.message);
+
     setNewTag({ code: "", label: "", color: "#d47a77" });
     loadAll();
   }
@@ -157,7 +210,8 @@ export default function AdminPage() {
     if (!newItem.name) return setErr("Nom item requis.");
 
     const ht = Number(newItem.price_ht_cents || 0);
-    const ttc = Math.round(ht * 1.1);
+    const vat = 0.10; // TVA 10%
+    const ttc = Math.round(ht * (1 + vat));
 
     const res = await supabase.from("menu_items").insert({
       event_id: event.id,
@@ -165,7 +219,7 @@ export default function AdminPage() {
       name: newItem.name.trim(),
       description: newItem.description?.trim() || null,
       price_ht_cents: ht,
-      vat_rate: 0.10,
+      vat_rate: vat,
       price_ttc_cents: ttc,
       image_url: newItem.image_url?.trim() || null,
       is_active: true,
@@ -237,10 +291,11 @@ export default function AdminPage() {
             </div>
 
             <div className="hr" />
-            <h2 className="h2">Sous-commandes (jour)</h2>
-            <div className="small">Dernières 200 lignes</div>
-            <div className="hr" />
 
+            <h2 className="h2">Vue par jour (sous-commandes)</h2>
+            <div className="small">Dernières 300 lignes</div>
+
+            <div className="hr" />
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
@@ -249,9 +304,9 @@ export default function AdminPage() {
                     <th style={{ padding: 10 }}>Exposant</th>
                     <th style={{ padding: 10 }}>Stand</th>
                     <th style={{ padding: 10 }}>Menu</th>
+                    <th style={{ padding: 10 }}>Allergies</th>
                     <th style={{ padding: 10 }}>Livraison</th>
                     <th style={{ padding: 10 }}>Statut</th>
-                    <th style={{ padding: 10 }}>Employé</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -268,23 +323,81 @@ export default function AdminPage() {
                           <div className="small"><b>Plat:</b> {r.plat}</div>
                           <div className="small"><b>Dessert:</b> {r.dessert}</div>
                         </td>
+                        <td style={{ padding: 10 }} className="small">{r.diet_notes || "—"}</td>
                         <td style={{ padding: 10 }} className="small">
                           {r.delivery?.mode || "—"}<br />
                           {r.delivery?.instructions ? <span>({r.delivery.instructions})</span> : null}
                         </td>
                         <td style={{ padding: 10 }}><span className="badge">{r.status}</span></td>
-                        <td style={{ padding: 10 }} className="small">{r.employee_name || "—"}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
             </div>
+
+            <div className="hr" />
+
+            <h2 className="h2">Vue par exposant (commande globale)</h2>
+            <div className="small">Groupé par order_id</div>
+
+            <div className="hr" />
+
+            {ordersGrouped.length === 0 ? (
+              <div className="small">Aucune commande.</div>
+            ) : (
+              ordersGrouped.map((g) => (
+                <div key={g.order.id} style={{ border: "1px solid var(--border)", borderRadius: 16, padding: 14, marginBottom: 12 }}>
+                  <div className="row" style={{ justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontWeight: 900 }}>
+                        {g.order.company} — Stand {g.order.stand}
+                      </div>
+                      <div className="small">{g.order.first_name} {g.order.last_name} • {g.order.email} • {g.order.phone}</div>
+                    </div>
+                    <span className="badge">{g.days.length} jour(s)</span>
+                  </div>
+
+                  <div className="hr" />
+                  <div className="small" style={{ lineHeight: 1.6 }}>
+                    {g.days.map((d) => (
+                      <div key={d.id}>
+                        <b>{d.day_label}</b> — {d.entree} / {d.plat} / {d.dessert} • <span className="badge">{d.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         ) : (
           <div className="mainCard">
             <h2 className="h2">Configuration</h2>
-            <div className="small">CRUD simple pour jours, menus, tags, associations.</div>
+            <div className="small">Event + jours + menus + tags + associations.</div>
+
+            <div className="hr" />
+
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>Event</div>
+              <div className="grid2">
+                <div className="field">
+                  <label>Nom</label>
+                  <input value={eventEdit.name} onChange={(e) => setEventEdit({ ...eventEdit, name: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label>Logo URL (optionnel)</label>
+                  <input value={eventEdit.logo_url} onChange={(e) => setEventEdit({ ...eventEdit, logo_url: e.target.value })} placeholder="/asset/logo.svg ou https://..." />
+                </div>
+                <div className="field" style={{ gridColumn: "1 / -1" }}>
+                  <label>Hero image URL (optionnel)</label>
+                  <input value={eventEdit.hero_image_url} onChange={(e) => setEventEdit({ ...eventEdit, hero_image_url: e.target.value })} placeholder="/asset/eventmain.jpg ou https://..." />
+                </div>
+              </div>
+              <div className="row" style={{ marginTop: 10 }}>
+                <button className="btn mf" onClick={saveEvent}>Sauver event</button>
+              </div>
+            </div>
+
             <div className="hr" />
 
             <div style={{ marginBottom: 22 }}>
@@ -317,6 +430,8 @@ export default function AdminPage() {
               ))}
             </div>
 
+            <div className="hr" />
+
             <div style={{ marginBottom: 22 }}>
               <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>Tags</div>
               <div className="grid2">
@@ -340,15 +455,27 @@ export default function AdminPage() {
               <div className="hr" />
               <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
                 {tags.map((t) => (
-                  <span key={t.id} style={{ padding: "8px 12px", borderRadius: 999, background: t.color, fontWeight: 900, border: "1px solid rgba(0,0,0,.06)" }}>
-                    {t.code} • {t.label}
+                  <span
+                    key={t.id}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 999,
+                      background: t.color || "#eee",
+                      fontWeight: 900,
+                      border: "1px solid rgba(0,0,0,.06)",
+                    }}
+                  >
+                    {t.label}
                   </span>
                 ))}
               </div>
             </div>
 
+            <div className="hr" />
+
             <div style={{ marginBottom: 22 }}>
               <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>Menu items</div>
+
               <div className="grid2">
                 <div className="field">
                   <label>Catégorie</label>
@@ -370,7 +497,7 @@ export default function AdminPage() {
                     value={newItem.price_ht_cents}
                     onChange={(e) => setNewItem({ ...newItem, price_ht_cents: Number(e.target.value || 0) })}
                   />
-                  <div className="small">TTC auto: {euros(Math.round(Number(newItem.price_ht_cents || 0) * 1.1))} €</div>
+                  <div className="small">TTC auto (TVA 10%) : {euros(Math.round(Number(newItem.price_ht_cents || 0) * 1.1))} €</div>
                 </div>
                 <div className="field" style={{ gridColumn: "1 / -1" }}>
                   <label>Description</label>
@@ -400,6 +527,7 @@ export default function AdminPage() {
                       </div>
                       <div className="small">{it.description || ""}</div>
                       <TagChips tags={tagsByItemId.get(it.id)} />
+                      <div className="small">{it.image_url ? `image: ${it.image_url}` : ""}</div>
                     </div>
                     <button className="btn secondary" onClick={() => toggleItem(it.id, it.is_active)}>
                       {it.is_active ? "Désactiver" : "Activer"}
@@ -410,7 +538,17 @@ export default function AdminPage() {
                     {tags.map((t) => {
                       const current = (tagsByItemId.get(it.id) || []).some((x) => x.id === t.id);
                       return (
-                        <label key={t.id} className="row" style={{ gap: 8, border: "1px solid var(--border)", borderRadius: 999, padding: "6px 10px" }}>
+                        <label
+                          key={t.id}
+                          className="row"
+                          style={{
+                            gap: 8,
+                            border: "1px solid var(--border)",
+                            borderRadius: 999,
+                            padding: "6px 10px",
+                            background: current ? "rgba(212,122,119,.10)" : "transparent",
+                          }}
+                        >
                           <input
                             type="checkbox"
                             checked={current}
