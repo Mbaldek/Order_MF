@@ -1,6 +1,7 @@
 "use client";
 
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabaseClient";
+
 
 export default function DebugPage() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
