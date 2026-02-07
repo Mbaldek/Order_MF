@@ -1,14 +1,14 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Maison Félicien — Commandes Salon (MOCK)",
-  description: "Mock UI/UX - sans Supabase"
+  title: "Maison Félicien — Commandes évènement",
+  description: "Précommande de paniers déjeuner pendant un évènement"
 };
 
 function NavBtn({ href, children }) {
   return (
     <a href={href}>
-      <span className="btn ghost">{children}</span>
+      <span className="btn">{children}</span>
     </a>
   );
 }
@@ -23,19 +23,21 @@ export default function RootLayout({ children }) {
               <img src="/M.svg" alt="Maison Félicien" />
               <div>
                 <div className="title">Maison Félicien</div>
-                <div className="sub">Commandes salon — prototype (MOCK)</div>
+                <div className="sub">Commandes évènement</div>
               </div>
             </div>
+
             <div className="nav">
               <NavBtn href="/">Accueil</NavBtn>
               <NavBtn href="/order">Commander</NavBtn>
-              <NavBtn href="/employee">Employé</NavBtn>
-              <NavBtn href="/admin">Admin</NavBtn>
+              <NavBtn href="/admin/login">Admin</NavBtn>
             </div>
           </div>
-          <div style={{ marginTop: 14 }}>{children}</div>
-          <div style={{ marginTop: 24 }} className="small">
-            Données MOCK via localStorage (clé: <code>mf_mock_v1</code>).
+
+          <div style={{ marginTop: 16 }}>{children}</div>
+
+          <div style={{ marginTop: 26 }} className="small">
+            Version “réelle” minimale : commandes stockées dans Supabase. Admin/Employé via login.
           </div>
         </div>
       </body>

@@ -1,160 +1,181 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { load, seed, updateDayStatus } from "../../lib/mockStore";
+import { supabase } from "../../lib/supabaseClient";
+import { getMyProfile, signOut } from "../../lib/auth";
 
-function Field({ label, children }) {
-  return (
-    <div>
-      <div className="label">{label}</div>
-      {children}
-    </div>
-  );
-}
-
-function statusLabel(s) {
-  return ({
-    DRAFT: "Brouillon",
-    CONFIRMED: "Confirmée",
-    PREPARING: "En préparation",
-    READY: "Prête",
-    DELIVERING: "En livraison",
-    DELIVERED: "Livrée",
-    CLOSED: "Clôturée"
-  }[s] || s);
-}
+const STATUSES = ["CONFIRMED","PREPARING","READY","DELIVERING","DELIVERED","CLOSED"];
 
 export default function EmployeePage() {
-  const [data, setData] = useState(null);
-  const [employeeId, setEmployeeId] = useState("");
-  const [tab, setTab] = useState("TODAY");
+  const [profile, setProfile] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [day, setDay] = useState(new Date().toISOString().slice(0,10));
   const [filter, setFilter] = useState("CONFIRMED");
-  const [todayId, setTodayId] = useState("d1");
 
   useEffect(() => {
-    const d = load() || seed();
-    setData(d);
-    setEmployeeId(d.config.employees.find(e => e.active)?.id || "");
-    setTodayId(d.config.days[0]?.id || "d1");
+    (async () => {
+      try {
+        const p = await getMyProfile();
+        if (!p) { window.location.href = "/admin/login"; return; }
+        if (p.role === "admin") { window.location.href = "/admin"; return; }
+        if (p.role !== "employee") { window.location.href = "/admin/login"; return; }
+        setProfile(p);
+        await load(p);
+      } catch {
+        window.location.href = "/admin/login";
+      }
+    })();
   }, []);
 
-  const employeeName = useMemo(() => {
-    if (!data) return "";
-    return data.config.employees.find(e => e.id === employeeId)?.name || "";
-  }, [data, employeeId]);
+  async function load(p=profile) {
+    setToast({ type:"ok", msg:"Chargement…" });
+    const q = supabase
+      .from("order_days")
+      .select("id, day_date, day_label, entree, plat, dessert, status, delivery, orders:order_id(company, stand)")
+      .eq("day_date", day)
+      .order("created_at", { ascending: true });
 
-  const dayOrders = useMemo(() => {
-    if (!data) return [];
-    const orders = [];
-    for (const o of data.orders) for (const d of o.dayOrders) orders.push({ order: o, day: d });
-    let out = orders;
-    if (tab === "TODAY") out = out.filter(x => x.day.dayId === todayId);
-    if (filter !== "ALL") out = out.filter(x => x.day.status === filter);
-    return out;
-  }, [data, tab, filter, todayId]);
+    if (filter !== "ALL") q.eq("status", filter);
 
-  function setStatus(dayOrderId, status) {
-    const res = updateDayStatus(dayOrderId, { status, employeeName: employeeName || null });
-    setData(res.data);
+    const { data, error } = await q;
+    if (error) {
+      setToast({ type:"bad", msg: `${error.message}${error.code ? " (code: "+error.code+")" : ""}` });
+      return;
+    }
+    setRows(data || []);
+    setToast(null);
   }
 
-  function attachProof(dayOrderId, file) {
+  async function setStatus(id, status) {
+    setToast({ type:"ok", msg:"Mise à jour…" });
+    const { error } = await supabase
+      .from("order_days")
+      .update({ status, employee_name: profile?.full_name || null })
+      .eq("id", id);
+
+    if (error) {
+      setToast({ type:"bad", msg: `${error.message}${error.code ? " (code: "+error.code+")" : ""}` });
+      return;
+    }
+    await load();
+  }
+
+  async function uploadProof(id, file) {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const res = updateDayStatus(dayOrderId, { proofPhotoDataUrl: reader.result, status: "DELIVERED", employeeName: employeeName || null });
-      setData(res.data);
-    };
-    reader.readAsDataURL(file);
+    setToast({ type:"ok", msg:"Upload preuve…" });
+
+    const path = `proof_${id}_${Date.now()}_${file.name}`.replaceAll(" ", "_");
+    const up = await supabase.storage.from("proofs").upload(path, file, { upsert: true });
+
+    if (up.error) {
+      setToast({ type:"bad", msg: up.error.message });
+      return;
+    }
+
+    const { data: pub } = supabase.storage.from("proofs").getPublicUrl(path);
+
+    const { error } = await supabase
+      .from("order_days")
+      .update({ proof_url: pub.publicUrl, status: "DELIVERED", employee_name: profile?.full_name || null })
+      .eq("id", id);
+
+    if (error) {
+      setToast({ type:"bad", msg: `${error.message}${error.code ? " (code: "+error.code+")" : ""}` });
+      return;
+    }
+    await load();
   }
 
-  if (!data) return <div className="card">Chargement…</div>;
+  async function logout() {
+    await signOut();
+    window.location.href = "/admin/login";
+  }
+
+  if (!profile) return <div className="card">Chargement…</div>;
 
   return (
     <div className="grid">
       <div className="card">
-        <div className="badge">Employé • Exécution</div>
-        <h1 className="h1" style={{ marginTop: 10 }}>Préparation & livraison (MOCK)</h1>
-        <p className="p">Flux: Confirmée → Préparation → Prête → Livraison → Photo → Livrée → Clôturée.</p>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:10, flexWrap:"wrap" }}>
+          <div>
+            <div className="badge">Employé</div>
+            <h1 className="h1" style={{ marginTop: 10 }}>Préparation & livraison</h1>
+            <div className="small">Connecté: {profile.full_name || profile.id}</div>
+          </div>
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+            <button className="btn light" onClick={()=>load()}>Rafraîchir</button>
+            <button className="btn light" onClick={logout}>Déconnexion</button>
+          </div>
+        </div>
+
+        {toast ? (
+          <div style={{ marginTop: 12 }} className={"badge " + (toast.type === "ok" ? "ok" : "bad")}>
+            {toast.msg}
+          </div>
+        ) : null}
 
         <hr className="hr" />
 
         <div className="row">
-          <Field label="Employé">
-            <select className="select" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
-              {data.config.employees.filter(e => e.active).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+          <div>
+            <div className="label">Jour</div>
+            <input className="input" type="date" value={day} onChange={(e)=>setDay(e.target.value)} />
+          </div>
+          <div>
+            <div className="label">Filtre statut</div>
+            <select className="select" value={filter} onChange={(e)=>setFilter(e.target.value)}>
+              <option value="ALL">Tous</option>
+              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-          </Field>
-          <Field label="Jour (vue Today)">
-            <select className="select" value={todayId} onChange={(e) => setTodayId(e.target.value)}>
-              {data.config.days.map(d => <option key={d.id} value={d.id}>{d.label} — {d.dateISO}</option>)}
-            </select>
-          </Field>
+          </div>
         </div>
 
-        <div className="tabs">
-          <div className={"tab " + (tab === "TODAY" ? "active" : "")} onClick={() => setTab("TODAY")}>Aujourd’hui</div>
-          <div className={"tab " + (tab === "ALL" ? "active" : "")} onClick={() => setTab("ALL")}>Tous</div>
-        </div>
-
-        <div className="tabs">
-          {["CONFIRMED","PREPARING","READY","DELIVERING","DELIVERED","CLOSED","ALL"].map(s => (
-            <div key={s} className={"tab " + (filter === s ? "active" : "")} onClick={() => setFilter(s)}>
-              {s === "ALL" ? "Tous" : statusLabel(s)}
-            </div>
-          ))}
+        <div style={{ marginTop: 10 }}>
+          <button className="btn light" onClick={()=>load()}>Appliquer</button>
         </div>
       </div>
 
       <div className="card">
         <h2 className="h2">Liste</h2>
-        {dayOrders.length === 0 ? (
-          <div className="badge">Aucun élément.</div>
+
+        {rows.length===0 ? (
+          <div className="badge">Aucune commande pour ce jour/filtre.</div>
         ) : (
-          <div className="grid" style={{ marginTop: 10 }}>
-            {dayOrders.map(({ order, day }) => (
-              <div className="card" key={day.dayOrderId} style={{ background: "rgba(15,15,20,.85)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div className="grid">
+            {rows.map(r => (
+              <div key={r.id} className="card" style={{ boxShadow:"none" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:10, flexWrap:"wrap" }}>
                   <div>
-                    <div className="badge">ORDER_DAY_ID: {day.dayOrderId}</div>
-                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <span className="badge ok">Stand: {order.exhibitor.stand}</span>
-                      <span className="badge">Exposant: {order.exhibitor.company}</span>
-                      <span className="badge">Statut: {statusLabel(day.status)}</span>
-                      {day.employeeName ? <span className="badge">Employé: {day.employeeName}</span> : null}
-                    </div>
+                    <div style={{ fontWeight: 900 }}>{r.orders?.company}</div>
+                    <div className="small">Stand {r.orders?.stand} • {r.day_label} ({r.day_date})</div>
                   </div>
-                  <div className="small">{day.dayLabel} — {day.dateISO}</div>
+                  <div className="badge">Statut: {r.status}</div>
                 </div>
 
                 <hr className="hr" />
 
-                <div className="small">
-                  Menu: <b>{day.entree}</b> / <b>{day.plat}</b> / <b>{day.dessert}</b> • {day.delivery.mode === "DELIVERY" ? "Livraison stand" : "Retrait"}
-                </div>
+                <div className="small">Menu: <b>{r.entree}</b> / <b>{r.plat}</b> / <b>{r.dessert}</b></div>
+                <div className="small">Livraison: <b>{r.delivery?.mode}</b>{r.delivery?.mode==="DELIVERY" ? ` • ${r.delivery?.instructions || "-"}` : ""}</div>
 
-                <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button className="btn" onClick={() => setStatus(day.dayOrderId, "PREPARING")} disabled={day.status !== "CONFIRMED"}>Préparer</button>
-                  <button className="btn" onClick={() => setStatus(day.dayOrderId, "READY")} disabled={day.status !== "PREPARING"}>Prêt</button>
-                  <button className="btn" onClick={() => setStatus(day.dayOrderId, "DELIVERING")} disabled={day.status !== "READY"}>Livraison</button>
+                <div style={{ marginTop: 12, display:"flex", gap:10, flexWrap:"wrap" }}>
+                  <button className="btn light" disabled={r.status!=="CONFIRMED"} onClick={()=>setStatus(r.id,"PREPARING")}>Préparer</button>
+                  <button className="btn light" disabled={r.status!=="PREPARING"} onClick={()=>setStatus(r.id,"READY")}>Prêt</button>
+                  <button className="btn light" disabled={r.status!=="READY"} onClick={()=>setStatus(r.id,"DELIVERING")}>Livraison</button>
 
-                  <label className="btn primary" style={{ display: "inline-flex", alignItems: "center", gap: 8, opacity: day.status === "DELIVERING" ? 1 : 0.6 }}>
-                    📷 Photo + valider
-                    <input type="file" accept="image/*" style={{ display: "none" }}
-                      onChange={(e) => attachProof(day.dayOrderId, e.target.files?.[0])}
-                      disabled={day.status !== "DELIVERING"}
+                  <label className="btn light" style={{ cursor: r.status==="DELIVERING" ? "pointer" : "not-allowed", opacity: r.status==="DELIVERING" ? 1 : .55 }}>
+                    📷 Preuve (upload)
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display:"none" }}
+                      disabled={r.status!=="DELIVERING"}
+                      onChange={(e)=>uploadProof(r.id, e.target.files?.[0])}
                     />
                   </label>
 
-                  <button className="btn" onClick={() => setStatus(day.dayOrderId, "CLOSED")} disabled={day.status !== "DELIVERED"}>Clôturer</button>
+                  <button className="btn light" disabled={r.status!=="DELIVERED"} onClick={()=>setStatus(r.id,"CLOSED")}>Clôturer</button>
                 </div>
-
-                {day.proofPhotoDataUrl ? (
-                  <div style={{ marginTop: 12 }}>
-                    <div className="label">Preuve (MOCK)</div>
-                    <img src={day.proofPhotoDataUrl} alt="preuve" style={{ width: "100%", maxWidth: 520, borderRadius: 14, border: "1px solid var(--line)" }} />
-                  </div>
-                ) : null}
               </div>
             ))}
           </div>
