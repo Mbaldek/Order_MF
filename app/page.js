@@ -1,6 +1,27 @@
 import Header from "../components/Header";
+import { supabase } from "../lib/supabaseClient";
 
-export default function HomePage() {
+export const revalidate = 60; // cache 60s (safe)
+
+export default async function HomePage() {
+  // Server Component: on récupère l'event actif (si possible)
+  let event = null;
+  try {
+    const { data, error } = await supabase
+      .from("event_config")
+      .select("*")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!error) event = data;
+  } catch (_) {}
+
+  const logoSrc = event?.logo_url || "/asset/logo.svg";
+  const heroSrc = event?.hero_image_url || "/asset/eventmain.jpg";
+  const eventName = event?.name || "Votre évènement";
+
   return (
     <>
       <Header />
@@ -9,31 +30,39 @@ export default function HomePage() {
         <section className="heroCard">
           <div className="heroGrid">
             <div>
-              <div className="badge">Accueil</div>
+              <div className="badge">Bienvenue</div>
               <h1 className="h1" style={{ fontSize: 44, marginTop: 10 }}>
-                Commandes événement
+                Maison Félicien — Commandes déjeuner
               </h1>
-              <p className="p" style={{ maxWidth: 520 }}>
-                Bienvenue sur le site de l’évènement. Nous vous proposons de commander à l’avance
-                vos paniers déjeuners durant la période de l’évènement.
+              <p className="p" style={{ maxWidth: 560 }}>
+                Bienvenue sur <b>{eventName}</b>. Commandez à l’avance vos paniers déjeuner
+                pendant la période de l’évènement, pour une livraison stand ou un retrait simple.
               </p>
 
               <div className="row" style={{ marginTop: 18, gap: 10, flexWrap: "wrap" }}>
                 <a className="btn mf" href="/order">Commander</a>
-                <a className="btn secondary" href="/admin">Admin</a>
               </div>
 
               <div className="hr" />
+
               <div className="small">
-                • Commande multi-jours (1 globale → N jours)<br />
-                • Suivi opérationnel par jour (prépa / livraison)
+                • 1 commande globale → plusieurs jours<br />
+                • Suivi opérationnel par jour (préparation / livraison)
               </div>
             </div>
 
             <div className="heroVisual">
-              {/* IMPORTANT : pas de onError ici (Server Component) */}
+              <div className="row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
+                <img
+                  src={logoSrc}
+                  alt="Logo"
+                  style={{ height: 38, width: "auto" }}
+                />
+                <span className="badge">Précommande</span>
+              </div>
+
               <img
-                src="/asset/eventmain.jpg"
+                src={heroSrc}
                 alt="Event"
                 style={{
                   width: "100%",
@@ -49,12 +78,12 @@ export default function HomePage() {
 
         <section className="mainCard" style={{ marginTop: 14 }}>
           <h2 className="h2">Comment ça marche</h2>
-          <div className="small">
-            1) Saisir votre identité exposant<br />
-            2) Créer la commande globale<br />
-            3) Ajouter un ou plusieurs jours (1 carte = 1 jour)<br />
-            4) Choisir entrée / plat / dessert + boissons + allergies<br />
-            5) Confirmer
+          <div className="small" style={{ lineHeight: 1.6 }}>
+            1) Saisissez votre identité exposant<br />
+            2) Créez la commande globale (pour le total)<br />
+            3) Ajoutez un ou plusieurs jours (1 carte = 1 jour)<br />
+            4) Choisissez menus + boissons + allergies<br />
+            5) Confirmez : chaque jour obtient un suivi dédié
           </div>
         </section>
 
