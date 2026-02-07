@@ -1,9 +1,9 @@
 "use client";
 
-import Header from "@/components/Header";
-import TagChips from "@/components/TagChips";
-import DrinkPicker from "@/components/DrinkPicker";
-import { supabase } from "@/lib/supabaseClient";
+import Header from "../../components/Header";
+import TagChips from "../../components/TagChips";
+import DrinkPicker from "../../components/DrinkPicker";
+import { supabase } from "../../lib/supabaseClient";
 import { useEffect, useMemo, useState } from "react";
 
 function euros(cents) {
@@ -32,7 +32,7 @@ export default function OrderPage() {
   const [days, setDays] = useState([]);
   const [items, setItems] = useState([]);
   const [tags, setTags] = useState([]);
-  const [itemTags, setItemTags] = useState([]); // rows menu_item_tags
+  const [itemTags, setItemTags] = useState([]);
 
   const [identity, setIdentity] = useState({
     company: "",
@@ -46,14 +46,12 @@ export default function OrderPage() {
   const [orderId, setOrderId] = useState(null);
   const [dayOrders, setDayOrders] = useState([defaultDay()]);
 
-  // Load config from Supabase
   useEffect(() => {
     let mounted = true;
     async function load() {
       setLoading(true);
       setErr("");
 
-      // 1) active event
       const ev = await supabase
         .from("event_config")
         .select("*")
@@ -75,7 +73,6 @@ export default function OrderPage() {
 
       const eventId = ev.data.id;
 
-      // 2) days
       const d = await supabase
         .from("event_days")
         .select("*")
@@ -89,7 +86,6 @@ export default function OrderPage() {
         return;
       }
 
-      // 3) items
       const it = await supabase
         .from("menu_items")
         .select("*")
@@ -104,7 +100,6 @@ export default function OrderPage() {
         return;
       }
 
-      // 4) tags + mapping
       const tg = await supabase.from("tags").select("*").order("code", { ascending: true });
       if (tg.error) {
         if (mounted) setErr(`Erreur chargement tags: ${tg.error.message}`);
@@ -159,7 +154,6 @@ export default function OrderPage() {
   }, [items]);
 
   const totals = useMemo(() => {
-    // totals per day + global TTC/HT
     let totalHt = 0;
     let totalTtc = 0;
 
@@ -193,7 +187,6 @@ export default function OrderPage() {
 
   async function createGlobalOrder() {
     setErr("");
-    // basic validation
     const required = ["company", "stand", "first_name", "last_name", "phone", "email"];
     for (const k of required) {
       if (!identity[k] || String(identity[k]).trim() === "") {
@@ -245,13 +238,9 @@ export default function OrderPage() {
       return;
     }
 
-    // validate each day
     for (const d of dayOrders) {
       if (!d.day_date) return setErr("Choisis un jour pour chaque sous-commande.");
       if (!d.entree_id || !d.plat_id || !d.dessert_id) return setErr("Choisis entrée/plat/dessert pour chaque jour.");
-      if (d.delivery_mode === "DELIVERY" && !d.delivery_instructions) {
-        // optional in spec; here we allow empty but UX suggests it
-      }
     }
 
     const payload = dayOrders.map((d, idx) => {
@@ -272,21 +261,19 @@ export default function OrderPage() {
         dessert: byId.get(d.dessert_id)?.name || "",
         drinks: d.drinks || [],
         diet_notes: d.diet_notes || "",
-        options: {}, // reserved
+        options: {},
         delivery,
         status: "CONFIRMED",
       };
     });
 
     const ins = await supabase.from("order_days").insert(payload).select("id");
-
     if (ins.error) {
       setErr(ins.error.message);
       return;
     }
 
     alert(`OK. ${ins.data?.length || 0} sous-commande(s) créée(s).`);
-    // reset
     setDayOrders([defaultDay()]);
     setOrderId(null);
     setIdentity({ company: "", stand: "", first_name: "", last_name: "", phone: "", email: "" });
@@ -300,14 +287,14 @@ export default function OrderPage() {
         <b>Flux :</b> 1 commande globale (identité) → N sous-commandes (1 par jour) pour le suivi cuisine/livraison.
       </p>
       <div className="small">
-        1) Compléter identité • 2) Créer commande globale • 3) Ajouter un jour • 4) Choisir menus/boissons • 5) Confirmer
+        1) Identité • 2) Créer commande globale • 3) Ajouter jour • 4) Menus/boissons • 5) Confirmer
       </div>
       <div className="hr" />
       <div className="small">
         <b>FAQ</b><br />
-        • Paiement : à définir (Sprint suivant).<br />
-        • Modifications : possible tant que non “préparée” (Sprint suivant).<br />
-        • Allergies : préciser dans le champ dédié pour chaque jour.
+        • Allergies : à préciser pour chaque jour.<br />
+        • Modifs : Sprint 2 (règles + rôles).<br />
+        • Paiement : Sprint suivant.
       </div>
     </div>
   );
@@ -329,10 +316,8 @@ export default function OrderPage() {
       <Header />
       <main className="container">
         {infoBlock}
-
         {err ? <div className="alert" style={{ marginBottom: 14 }}>{err}</div> : null}
 
-        {/* Identity */}
         <div className="mainCard">
           <h2 className="h2">Identité exposant</h2>
 
@@ -379,13 +364,11 @@ export default function OrderPage() {
           </div>
 
           <div className="hr" />
-
           <div className="small">
-            Après création, ajoutez une sous-commande par jour. Le total est global, le suivi est journalier.
+            Ajoute ensuite une sous-commande par jour. Total global, suivi journalier.
           </div>
         </div>
 
-        {/* Day orders */}
         <div className="mainCard" style={{ marginTop: 14 }}>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <div>
@@ -400,10 +383,6 @@ export default function OrderPage() {
           <div className="hr" />
 
           {dayOrders.map((d, idx) => {
-            const entreeItem = byId.get(d.entree_id);
-            const platItem = byId.get(d.plat_id);
-            const dessertItem = byId.get(d.dessert_id);
-
             const perDay = totals.perDay[idx] || { ht: 0, ttc: 0 };
 
             return (
@@ -427,11 +406,7 @@ export default function OrderPage() {
                 <div className="grid2" style={{ marginTop: 12 }}>
                   <div className="field">
                     <label>Jour *</label>
-                    <select
-                      value={d.day_date}
-                      onChange={(e) => updateDay(idx, { day_date: e.target.value })}
-                      disabled={!orderId}
-                    >
+                    <select value={d.day_date} onChange={(e) => updateDay(idx, { day_date: e.target.value })} disabled={!orderId}>
                       <option value="">— Choisir —</option>
                       {days.map((x) => (
                         <option key={x.id} value={x.day_date}>
@@ -443,11 +418,7 @@ export default function OrderPage() {
 
                   <div className="field">
                     <label>Livraison *</label>
-                    <select
-                      value={d.delivery_mode}
-                      onChange={(e) => updateDay(idx, { delivery_mode: e.target.value })}
-                      disabled={!orderId}
-                    >
+                    <select value={d.delivery_mode} onChange={(e) => updateDay(idx, { delivery_mode: e.target.value })} disabled={!orderId}>
                       <option value="DELIVERY">Livraison stand</option>
                       <option value="PICKUP">Retrait</option>
                     </select>
@@ -465,11 +436,7 @@ export default function OrderPage() {
 
                   <div className="field">
                     <label>Entrée *</label>
-                    <select
-                      value={d.entree_id}
-                      onChange={(e) => updateDay(idx, { entree_id: e.target.value })}
-                      disabled={!orderId}
-                    >
+                    <select value={d.entree_id} onChange={(e) => updateDay(idx, { entree_id: e.target.value })} disabled={!orderId}>
                       <option value="">— Choisir —</option>
                       {categories.entree.map((x) => (
                         <option key={x.id} value={x.id}>
@@ -482,11 +449,7 @@ export default function OrderPage() {
 
                   <div className="field">
                     <label>Plat *</label>
-                    <select
-                      value={d.plat_id}
-                      onChange={(e) => updateDay(idx, { plat_id: e.target.value })}
-                      disabled={!orderId}
-                    >
+                    <select value={d.plat_id} onChange={(e) => updateDay(idx, { plat_id: e.target.value })} disabled={!orderId}>
                       <option value="">— Choisir —</option>
                       {categories.plat.map((x) => (
                         <option key={x.id} value={x.id}>
@@ -499,11 +462,7 @@ export default function OrderPage() {
 
                   <div className="field">
                     <label>Dessert *</label>
-                    <select
-                      value={d.dessert_id}
-                      onChange={(e) => updateDay(idx, { dessert_id: e.target.value })}
-                      disabled={!orderId}
-                    >
+                    <select value={d.dessert_id} onChange={(e) => updateDay(idx, { dessert_id: e.target.value })} disabled={!orderId}>
                       <option value="">— Choisir —</option>
                       {categories.dessert.map((x) => (
                         <option key={x.id} value={x.id}>
@@ -540,15 +499,11 @@ export default function OrderPage() {
                   <div className="small">
                     Total jour HT: <b>{euros(perDay.ht)} €</b> • Total jour TTC: <b>{euros(perDay.ttc)} €</b>
                   </div>
-                  <div className="small">
-                    Entrée: <b>{entreeItem?.name || "—"}</b> • Plat: <b>{platItem?.name || "—"}</b> • Dessert: <b>{dessertItem?.name || "—"}</b>
-                  </div>
                 </div>
               </div>
             );
           })}
 
-          {/* CTA bottom */}
           <div className="hr" />
           <div className="row" style={{ justifyContent: "space-between" }}>
             <div>
