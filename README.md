@@ -1,12 +1,21 @@
-# Sprint 0 — Liaison GitHub ↔ Netlify ↔ Supabase (ultra minimal)
+# MF — Prototype MOCK (UI/UX)
 
 ## Pages
-- `/` : page OK + lien vers `/order`
-- `/order` : formulaire (menu 3 options entrée/plat/dessert + coordonnées) -> insert dans `public.orders`
+- `/` : welcome / landing
+- `/order` : commande multi-jours (1 commande globale + N sous-commandes)
+- `/employee` : préparation / livraison + photo validation
+- `/admin` : paramétrage + vues dynamiques
+- `/health` : healthcheck
 
-## Variables d'environnement (Netlify)
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+## Stockage
+- 100% MOCK via `localStorage` (clé `mf_mock_v1`)
+- Bouton **Reset mock** sur /order et /admin
 
-## Supabase (SQL)
-Exécuter: `supabase_sql/orders.sql`
+## Netlify (stable)
+- Branch: main
+- Base directory: vide
+- Build command: `npm run build`
+- Publish directory: vide
+- Functions directory: vide
+
+Note: `netlify.toml` force `publish = ".next"` pour éviter l'erreur Netlify (publish==base).

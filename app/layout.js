@@ -1,27 +1,42 @@
+import "./globals.css";
+
 export const metadata = {
-  title: "MF - Commande Déjeuner (Test)",
-  description: "Sprint 0 - Liaison Supabase"
+  title: "Maison Félicien — Commandes Salon (MOCK)",
+  description: "Mock UI/UX - sans Supabase"
 };
+
+function NavBtn({ href, children }) {
+  return (
+    <a href={href}>
+      <span className="btn ghost">{children}</span>
+    </a>
+  );
+}
 
 export default function RootLayout({ children }) {
   return (
     <html lang="fr">
-      <body style={{ margin: 0, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-        <div style={{ maxWidth: 860, margin: "0 auto", padding: 24 }}>
-          <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-            <div>
-              <div style={{ fontWeight: 700 }}>Maison Félicien</div>
-              <div style={{ fontSize: 12, opacity: 0.75 }}>Sprint 0 — liaison Netlify ↔ Supabase</div>
+      <body>
+        <div className="container">
+          <div className="header">
+            <div className="brand">
+              <img src="/M.svg" alt="Maison Félicien" />
+              <div>
+                <div className="title">Maison Félicien</div>
+                <div className="sub">Commandes salon — prototype (MOCK)</div>
+              </div>
             </div>
-            <nav style={{ fontSize: 14 }}>
-              <a href="/" style={{ marginRight: 12 }}>Accueil</a>
-              <a href="/order">Commander</a>
-            </nav>
-          </header>
-          <main style={{ marginTop: 18 }}>{children}</main>
-          <footer style={{ marginTop: 28, fontSize: 12, opacity: 0.7 }}>
-            © {new Date().getFullYear()} Maison Félicien
-          </footer>
+            <div className="nav">
+              <NavBtn href="/">Accueil</NavBtn>
+              <NavBtn href="/order">Commander</NavBtn>
+              <NavBtn href="/employee">Employé</NavBtn>
+              <NavBtn href="/admin">Admin</NavBtn>
+            </div>
+          </div>
+          <div style={{ marginTop: 14 }}>{children}</div>
+          <div style={{ marginTop: 24 }} className="small">
+            Données MOCK via localStorage (clé: <code>mf_mock_v1</code>).
+          </div>
         </div>
       </body>
     </html>
