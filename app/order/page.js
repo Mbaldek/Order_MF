@@ -7,7 +7,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { useEffect, useMemo, useState } from "react";
 
 function euros(cents) {
-  return (cents / 100).toFixed(2);
+  return (Number(cents || 0) / 100).toFixed(2);
 }
 
 function defaultDay() {
@@ -48,6 +48,7 @@ export default function OrderPage() {
 
   useEffect(() => {
     let mounted = true;
+
     async function load() {
       setLoading(true);
       setErr("");
@@ -115,6 +116,7 @@ export default function OrderPage() {
       }
 
       if (!mounted) return;
+
       setEvent(ev.data);
       setDays(d.data || []);
       setItems(it.data || []);
@@ -167,14 +169,14 @@ export default function OrderPage() {
 
       for (const x of [e, p, ds]) {
         if (x) {
-          ht += x.price_ht_cents;
-          ttc += x.price_ttc_cents;
+          ht += Number(x.price_ht_cents || 0);
+          ttc += Number(x.price_ttc_cents || 0);
         }
       }
 
       for (const b of d.drinks || []) {
-        ht += (b.price_ht_cents || 0) * (b.qty || 0);
-        ttc += (b.price_ttc_cents || 0) * (b.qty || 0);
+        ht += Number(b.price_ht_cents || 0) * Number(b.qty || 0);
+        ttc += Number(b.price_ttc_cents || 0) * Number(b.qty || 0);
       }
 
       totalHt += ht;
@@ -233,10 +235,7 @@ export default function OrderPage() {
 
   async function confirmAll() {
     setErr("");
-    if (!orderId) {
-      setErr("Crée d’abord la commande globale.");
-      return;
-    }
+    if (!orderId) return setErr("Crée d’abord la commande globale.");
 
     for (const d of dayOrders) {
       if (!d.day_date) return setErr("Choisis un jour pour chaque sous-commande.");
@@ -268,33 +267,32 @@ export default function OrderPage() {
     });
 
     const ins = await supabase.from("order_days").insert(payload).select("id");
-    if (ins.error) {
-      setErr(ins.error.message);
-      return;
-    }
+    if (ins.error) return setErr(ins.error.message);
 
     alert(`OK. ${ins.data?.length || 0} sous-commande(s) créée(s).`);
+
     setDayOrders([defaultDay()]);
     setOrderId(null);
     setIdentity({ company: "", stand: "", first_name: "", last_name: "", phone: "", email: "" });
   }
 
-  const infoBlock = (
+  const infoTop = (
     <div className="mainCard" style={{ marginBottom: 14 }}>
-      <div className="badge">User • Commande</div>
-      <h1 className="h1" style={{ fontSize: 40 }}>Commande multi-jours</h1>
+      <div className="badge">Commande</div>
+      <h1 className="h1" style={{ fontSize: 40 }}>Précommande multi-jours</h1>
       <p className="p">
-        <b>Flux :</b> 1 commande globale (identité) → N sous-commandes (1 par jour) pour le suivi cuisine/livraison.
+        <b>Principe :</b> vous créez 1 commande globale (identité), puis vous ajoutez <b>1 sous-commande par jour</b>.
+        Chaque jour aura un suivi dédié pour la préparation et la livraison/retrait.
       </p>
-      <div className="small">
-        1) Identité • 2) Créer commande globale • 3) Ajouter jour • 4) Menus/boissons • 5) Confirmer
-      </div>
+
       <div className="hr" />
-      <div className="small">
-        <b>FAQ</b><br />
-        • Allergies : à préciser pour chaque jour.<br />
-        • Modifs : Sprint 2 (règles + rôles).<br />
-        • Paiement : Sprint suivant.
+
+      <div className="small" style={{ lineHeight: 1.6 }}>
+        <b>Mini FAQ</b><br />
+        • Puis-je commander pour plusieurs jours ? <b>Oui</b>, ajoutez une carte par jour.<br />
+        • Allergies / régime ? Renseignez le champ dédié dans chaque jour.<br />
+        • Livraison ? Choisissez “Livraison stand” ou “Retrait”.<br />
+        • Total ? Le total global HT/TTC est calculé automatiquement.
       </div>
     </div>
   );
@@ -304,7 +302,7 @@ export default function OrderPage() {
       <>
         <Header />
         <main className="container">
-          {infoBlock}
+          {infoTop}
           <div className="mainCard">Chargement configuration…</div>
         </main>
       </>
@@ -315,7 +313,7 @@ export default function OrderPage() {
     <>
       <Header />
       <main className="container">
-        {infoBlock}
+        {infoTop}
         {err ? <div className="alert" style={{ marginBottom: 14 }}>{err}</div> : null}
 
         <div className="mainCard">
@@ -357,15 +355,7 @@ export default function OrderPage() {
                 {orderId ? `Commande globale: ${orderId}` : "Pas encore créée"}
               </span>
             </div>
-
-            <div className="small">
-              Event actif : <b>{event?.name || "—"}</b>
-            </div>
-          </div>
-
-          <div className="hr" />
-          <div className="small">
-            Ajoute ensuite une sous-commande par jour. Total global, suivi journalier.
+            <div className="small">Event actif : <b>{event?.name || "—"}</b></div>
           </div>
         </div>
 
@@ -375,9 +365,7 @@ export default function OrderPage() {
               <h2 className="h2" style={{ marginBottom: 4 }}>Sous-commandes par jour</h2>
               <div className="small">Chaque carte = 1 jour = 1 tracking opérationnel</div>
             </div>
-            <div className="row">
-              <button className="btn secondary" onClick={addDay} disabled={!orderId}>+ Ajouter un jour</button>
-            </div>
+            <button className="btn secondary" onClick={addDay} disabled={!orderId}>+ Ajouter un jour</button>
           </div>
 
           <div className="hr" />
@@ -397,7 +385,7 @@ export default function OrderPage() {
                 }}
               >
                 <div className="row" style={{ justifyContent: "space-between" }}>
-                  <div className="badge">Jour #{idx + 1} • Tracking généré au save</div>
+                  <div className="badge">Jour #{idx + 1}</div>
                   <button className="btn secondary" onClick={() => removeDay(idx)} disabled={dayOrders.length === 1}>
                     Supprimer
                   </button>
@@ -488,7 +476,7 @@ export default function OrderPage() {
                       rows={3}
                       value={d.diet_notes}
                       onChange={(e) => updateDay(idx, { diet_notes: e.target.value })}
-                      placeholder="Ex: sans arachide, sans lactose, etc."
+                      placeholder="Ex: sans arachide, sans lactose, sans gluten…"
                       disabled={!orderId}
                     />
                   </div>
@@ -504,6 +492,7 @@ export default function OrderPage() {
             );
           })}
 
+          {/* Bouton déplacé en bas */}
           <div className="hr" />
           <div className="row" style={{ justifyContent: "space-between" }}>
             <div>
@@ -514,7 +503,7 @@ export default function OrderPage() {
             </div>
 
             <button className="btn mf" onClick={confirmAll} disabled={!orderId}>
-              Valider / confirmer
+              Confirmer la commande
             </button>
           </div>
         </div>
