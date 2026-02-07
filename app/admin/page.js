@@ -9,10 +9,19 @@ function euros(cents) {
   return (Number(cents || 0) / 100).toFixed(2);
 }
 
+function addDaysISO(dateISO, n) {
+  const d = new Date(dateISO + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [tab, setTab] = useState("orders"); // orders | config
+  const [tab, setTab] = useState("setup"); // setup | orders | config
 
   const [event, setEvent] = useState(null);
   const [days, setDays] = useState([]);
@@ -20,23 +29,42 @@ export default function AdminPage() {
   const [tags, setTags] = useState([]);
   const [itemTags, setItemTags] = useState([]);
   const [orderDays, setOrderDays] = useState([]);
-  const [orders, setOrders] = useState([]);
 
-  const [newDay, setNewDay] = useState({ day_date: "", label: "" });
-  const [newTag, setNewTag] = useState({ code: "", label: "", color: "#d47a77" });
-  const [newItem, setNewItem] = useState({
-    category: "plat",
-    name: "",
-    description: "",
-    price_ht_cents: 0,
-    image_url: "",
+  // Setup inputs
+  const [setupEvent, setSetupEvent] = useState({
+    name: "Évènement",
+    logo_url: "/asset/logo.svg",
+    hero_image_url: "/asset/eventmain.jpg",
+  });
+
+  const [setupDays, setSetupDays] = useState({
+    start_date: "",
+    count: 3,
+    label_prefix: "Jour",
+  });
+
+  const [setupPrices, setSetupPrices] = useState({
+    entree_ht: 650,  // 6.50€
+    plat_ht: 1250,   // 12.50€
+    dessert_ht: 450, // 4.50€
   });
 
   const [eventEdit, setEventEdit] = useState({
     name: "",
     logo_url: "",
     hero_image_url: "",
-    is_active: true,
+  });
+
+  const [newDay, setNewDay] = useState({ day_date: "", label: "" });
+
+  const [newTag, setNewTag] = useState({ code: "", label: "", color: "#d47a77" });
+
+  const [newItem, setNewItem] = useState({
+    category: "plat",
+    name: "",
+    description: "",
+    price_ht_cents: 0,
+    image_url: "",
   });
 
   async function loadAll() {
@@ -51,10 +79,32 @@ export default function AdminPage() {
       .limit(1)
       .maybeSingle();
 
-    if (ev.error) return setErr(`Erreur event: ${ev.error.message}`), setLoading(false);
-    if (!ev.data) return setErr("Aucun event actif. (event_config is_active=true)"), setLoading(false);
+    if (ev.error) {
+      setErr(`Erreur event: ${ev.error.message}`);
+      setLoading(false);
+      return;
+    }
 
-    const eventId = ev.data.id;
+    let activeEvent = ev.data || null;
+    setEvent(activeEvent);
+
+    if (!activeEvent) {
+      setDays([]);
+      setItems([]);
+      setTags([]);
+      setItemTags([]);
+      setOrderDays([]);
+      setLoading(false);
+      return;
+    }
+
+    setEventEdit({
+      name: activeEvent?.name || "",
+      logo_url: activeEvent?.logo_url || "",
+      hero_image_url: activeEvent?.hero_image_url || "",
+    });
+
+    const eventId = activeEvent.id;
 
     const d = await supabase
       .from("event_days")
@@ -74,13 +124,7 @@ export default function AdminPage() {
 
     const od = await supabase
       .from("order_days")
-      .select("id, created_at, day_date, day_label, entree, plat, dessert, delivery, status, employee_name, proof_url, diet_notes, drinks, orders:orders(id, company, stand, first_name, last_name, phone, email)")
-      .order("created_at", { ascending: false })
-      .limit(300);
-
-    const o = await supabase
-      .from("orders")
-      .select("id, created_at, company, stand, first_name, last_name, phone, email")
+      .select("id, created_at, day_date, day_label, entree, plat, dessert, delivery, status, diet_notes, drinks, orders:orders(id, company, stand, first_name, last_name, phone, email)")
       .order("created_at", { ascending: false })
       .limit(300);
 
@@ -89,22 +133,12 @@ export default function AdminPage() {
     if (tg.error) return setErr(tg.error.message), setLoading(false);
     if (mt.error) return setErr(mt.error.message), setLoading(false);
     if (od.error) return setErr(od.error.message), setLoading(false);
-    if (o.error) return setErr(o.error.message), setLoading(false);
-
-    setEvent(ev.data);
-    setEventEdit({
-      name: ev.data?.name || "",
-      logo_url: ev.data?.logo_url || "",
-      hero_image_url: ev.data?.hero_image_url || "",
-      is_active: !!ev.data?.is_active,
-    });
 
     setDays(d.data || []);
     setItems(it.data || []);
     setTags(tg.data || []);
     setItemTags(mt.data || []);
     setOrderDays(od.data || []);
-    setOrders(o.data || []);
     setLoading(false);
   }
 
@@ -149,10 +183,123 @@ export default function AdminPage() {
     return Array.from(byOrderId.values());
   }, [orderDays]);
 
+  // ---------- Setup actions ----------
+
+  async function setupCreateEvent() {
+    setErr("");
+    if (!setupEvent.name?.trim()) return setErr("Nom event requis.");
+
+    // désactiver les events existants
+    const off = await supabase.from("event_config").update({ is_active: false }).neq("id", "00000000-0000-0000-0000-000000000000");
+    // ignore errors here (some setups don't have events yet)
+
+    const ins = await supabase
+      .from("event_config")
+      .insert({
+        name: setupEvent.name.trim(),
+        logo_url: setupEvent.logo_url || "/asset/logo.svg",
+        hero_image_url: setupEvent.hero_image_url || "/asset/eventmain.jpg",
+        is_active: true,
+      })
+      .select("*")
+      .single();
+
+    if (ins.error) return setErr(ins.error.message);
+    await loadAll();
+    setTab("setup");
+  }
+
+  async function setupGenerateDays() {
+    setErr("");
+    if (!event?.id) return setErr("Crée d’abord un event actif.");
+    if (!setupDays.start_date) return setErr("Start date requis.");
+    const count = Math.max(1, Math.min(14, Number(setupDays.count || 1)));
+
+    const rows = [];
+    for (let i = 0; i < count; i++) {
+      rows.push({
+        event_id: event.id,
+        day_date: addDaysISO(setupDays.start_date, i),
+        label: `${setupDays.label_prefix || "Jour"} ${i + 1}`,
+        is_active: true,
+      });
+    }
+
+    const ins = await supabase.from("event_days").insert(rows);
+    if (ins.error) return setErr(ins.error.message);
+    await loadAll();
+  }
+
+  async function setupCreateDefaultTags() {
+    setErr("");
+    const defaults = [
+      { code: "vegan", label: "Vegan", color: "#2ecc71" },
+      { code: "vege", label: "Végétarien", color: "#27ae60" },
+      { code: "poisson", label: "Poisson", color: "#3498db" },
+      { code: "viande", label: "Viande", color: "#e74c3c" },
+    ];
+
+    for (const t of defaults) {
+      // upsert soft: si code existe, skip
+      const existing = await supabase.from("tags").select("id").eq("code", t.code).maybeSingle();
+      if (existing.data?.id) continue;
+      const ins = await supabase.from("tags").insert(t);
+      if (ins.error) return setErr(ins.error.message);
+    }
+    await loadAll();
+  }
+
+  async function setupCreateMenuPack() {
+    setErr("");
+    if (!event?.id) return setErr("Crée d’abord un event actif.");
+
+    const vat = 0.10;
+
+    const pack = [
+      // Entrées
+      { category: "entree", name: "Entrée 1", description: "Description entrée", ht: setupPrices.entree_ht },
+      { category: "entree", name: "Entrée 2", description: "Description entrée", ht: setupPrices.entree_ht },
+      { category: "entree", name: "Entrée 3", description: "Description entrée", ht: setupPrices.entree_ht },
+      // Plats
+      { category: "plat", name: "Plat 1", description: "Description plat", ht: setupPrices.plat_ht },
+      { category: "plat", name: "Plat 2", description: "Description plat", ht: setupPrices.plat_ht },
+      { category: "plat", name: "Plat 3", description: "Description plat", ht: setupPrices.plat_ht },
+      // Desserts
+      { category: "dessert", name: "Dessert 1", description: "Description dessert", ht: setupPrices.dessert_ht },
+      { category: "dessert", name: "Dessert 2", description: "Description dessert", ht: setupPrices.dessert_ht },
+      { category: "dessert", name: "Dessert 3", description: "Description dessert", ht: setupPrices.dessert_ht },
+      // Boissons
+      { category: "boisson", name: "Eau", description: "", ht: 200 },
+      { category: "boisson", name: "Soda", description: "", ht: 250 },
+      { category: "boisson", name: "Café", description: "", ht: 180 },
+    ];
+
+    const rows = pack.map((p) => {
+      const ht = Number(p.ht || 0);
+      const ttc = Math.round(ht * (1 + vat));
+      return {
+        event_id: event.id,
+        category: p.category,
+        name: p.name,
+        description: p.description || null,
+        price_ht_cents: ht,
+        vat_rate: vat,
+        price_ttc_cents: ttc,
+        image_url: null,
+        is_active: true,
+      };
+    });
+
+    const ins = await supabase.from("menu_items").insert(rows);
+    if (ins.error) return setErr(ins.error.message);
+    await loadAll();
+  }
+
+  // ---------- Config actions ----------
+
   async function saveEvent() {
     setErr("");
     if (!event?.id) return;
-
     const res = await supabase
       .from("event_config")
       .update({
@@ -163,7 +310,7 @@ export default function AdminPage() {
       .eq("id", event.id);
 
     if (res.error) return setErr(res.error.message);
-    loadAll();
+    await loadAll();
   }
 
   async function addEventDay() {
@@ -180,28 +327,26 @@ export default function AdminPage() {
     if (res.error) return setErr(res.error.message);
 
     setNewDay({ day_date: "", label: "" });
-    loadAll();
+    await loadAll();
   }
 
   async function toggleDay(id, is_active) {
     const res = await supabase.from("event_days").update({ is_active: !is_active }).eq("id", id);
     if (res.error) return setErr(res.error.message);
-    loadAll();
+    await loadAll();
   }
 
   async function addTag() {
     setErr("");
     if (!newTag.code || !newTag.label) return setErr("code + label requis.");
-
     const res = await supabase.from("tags").insert({
       code: newTag.code.trim(),
       label: newTag.label.trim(),
       color: newTag.color || "#d47a77",
     });
     if (res.error) return setErr(res.error.message);
-
     setNewTag({ code: "", label: "", color: "#d47a77" });
-    loadAll();
+    await loadAll();
   }
 
   async function addItem() {
@@ -209,8 +354,8 @@ export default function AdminPage() {
     if (!event?.id) return;
     if (!newItem.name) return setErr("Nom item requis.");
 
+    const vat = 0.10;
     const ht = Number(newItem.price_ht_cents || 0);
-    const vat = 0.10; // TVA 10%
     const ttc = Math.round(ht * (1 + vat));
 
     const res = await supabase.from("menu_items").insert({
@@ -227,13 +372,13 @@ export default function AdminPage() {
     if (res.error) return setErr(res.error.message);
 
     setNewItem({ category: "plat", name: "", description: "", price_ht_cents: 0, image_url: "" });
-    loadAll();
+    await loadAll();
   }
 
   async function toggleItem(id, is_active) {
     const res = await supabase.from("menu_items").update({ is_active: !is_active }).eq("id", id);
     if (res.error) return setErr(res.error.message);
-    loadAll();
+    await loadAll();
   }
 
   async function setTagForItem(itemId, tagId, checked) {
@@ -245,7 +390,7 @@ export default function AdminPage() {
       const res = await supabase.from("menu_item_tags").delete().eq("menu_item_id", itemId).eq("tag_id", tagId);
       if (res.error) return setErr(res.error.message);
     }
-    loadAll();
+    await loadAll();
   }
 
   if (loading) {
@@ -267,10 +412,13 @@ export default function AdminPage() {
           <div>
             <div className="badge">Admin</div>
             <h1 className="h1" style={{ fontSize: 40, marginTop: 8 }}>Back-office</h1>
-            <div className="small">Event actif : <b>{event?.name || "—"}</b></div>
+            <div className="small">
+              Event actif : <b>{event?.name || "Aucun (setup requis)"}</b>
+            </div>
           </div>
 
           <div className="row">
+            <button className="btn secondary" onClick={() => setTab("setup")}>Setup</button>
             <button className="btn secondary" onClick={() => setTab("orders")}>Commandes</button>
             <button className="btn secondary" onClick={() => setTab("config")}>Configuration</button>
             <button className="btn" onClick={loadAll}>Rafraîchir</button>
@@ -279,7 +427,103 @@ export default function AdminPage() {
 
         {err ? <div className="alert" style={{ marginBottom: 14 }}>{err}</div> : null}
 
-        {tab === "orders" ? (
+        {tab === "setup" ? (
+          <div className="mainCard">
+            <h2 className="h2">Setup rapide (sans Supabase)</h2>
+            <div className="small">Permet à une personne non-tech de créer l’event, les jours, le menu, les tags.</div>
+
+            <div className="hr" />
+
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>1) Créer / Activer un event</div>
+              <div className="grid2">
+                <div className="field">
+                  <label>Nom event</label>
+                  <input value={setupEvent.name} onChange={(e) => setSetupEvent({ ...setupEvent, name: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label>Logo URL</label>
+                  <input value={setupEvent.logo_url} onChange={(e) => setSetupEvent({ ...setupEvent, logo_url: e.target.value })} />
+                </div>
+                <div className="field" style={{ gridColumn: "1 / -1" }}>
+                  <label>Hero image URL</label>
+                  <input value={setupEvent.hero_image_url} onChange={(e) => setSetupEvent({ ...setupEvent, hero_image_url: e.target.value })} />
+                </div>
+              </div>
+              <div className="row" style={{ marginTop: 10 }}>
+                <button className="btn mf" onClick={setupCreateEvent}>Créer & activer</button>
+              </div>
+              <div className="small" style={{ marginTop: 8 }}>
+                Astuce: utiliser <b>/asset/logo.svg</b> et <b>/asset/eventmain.jpg</b>
+              </div>
+            </div>
+
+            <div className="hr" />
+
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>2) Générer les jours</div>
+              <div className="grid2">
+                <div className="field">
+                  <label>Date de début</label>
+                  <input type="date" value={setupDays.start_date} onChange={(e) => setSetupDays({ ...setupDays, start_date: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label>Nombre de jours (1-14)</label>
+                  <input type="number" min={1} max={14} value={setupDays.count} onChange={(e) => setSetupDays({ ...setupDays, count: Number(e.target.value || 1) })} />
+                </div>
+                <div className="field">
+                  <label>Préfixe label</label>
+                  <input value={setupDays.label_prefix} onChange={(e) => setSetupDays({ ...setupDays, label_prefix: e.target.value })} />
+                </div>
+              </div>
+              <div className="row" style={{ marginTop: 10 }}>
+                <button className="btn mf" onClick={setupGenerateDays} disabled={!event?.id}>Générer</button>
+              </div>
+              <div className="small" style={{ marginTop: 8 }}>Ex: Jour 1, Jour 2, Jour 3…</div>
+            </div>
+
+            <div className="hr" />
+
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>3) Créer tags standards</div>
+              <div className="small">vegan, végé, poisson, viande (avec couleurs)</div>
+              <div className="row" style={{ marginTop: 10 }}>
+                <button className="btn mf" onClick={setupCreateDefaultTags}>Créer tags</button>
+              </div>
+            </div>
+
+            <div className="hr" />
+
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>4) Créer un menu pack</div>
+              <div className="grid2">
+                <div className="field">
+                  <label>Entrée HT (cents)</label>
+                  <input type="number" value={setupPrices.entree_ht} onChange={(e) => setSetupPrices({ ...setupPrices, entree_ht: Number(e.target.value || 0) })} />
+                </div>
+                <div className="field">
+                  <label>Plat HT (cents)</label>
+                  <input type="number" value={setupPrices.plat_ht} onChange={(e) => setSetupPrices({ ...setupPrices, plat_ht: Number(e.target.value || 0) })} />
+                </div>
+                <div className="field">
+                  <label>Dessert HT (cents)</label>
+                  <input type="number" value={setupPrices.dessert_ht} onChange={(e) => setSetupPrices({ ...setupPrices, dessert_ht: Number(e.target.value || 0) })} />
+                </div>
+              </div>
+              <div className="row" style={{ marginTop: 10 }}>
+                <button className="btn mf" onClick={setupCreateMenuPack} disabled={!event?.id}>Créer pack</button>
+              </div>
+              <div className="small" style={{ marginTop: 8 }}>
+                Crée: 3 entrées, 3 plats, 3 desserts, + 3 boissons (TVA 10% TTC auto)
+              </div>
+            </div>
+
+            <div className="hr" />
+            <div className="small">
+              ✅ Une fois fait: va sur <b>/order</b> pour vérifier que les menus et jours apparaissent.
+            </div>
+          </div>
+        ) : tab === "orders" ? (
           <div className="mainCard">
             <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
               {Object.entries(stats).map(([k, v]) => (
@@ -372,8 +616,8 @@ export default function AdminPage() {
           </div>
         ) : (
           <div className="mainCard">
-            <h2 className="h2">Configuration</h2>
-            <div className="small">Event + jours + menus + tags + associations.</div>
+            <h2 className="h2">Configuration (manuel)</h2>
+            <div className="small">Optionnel si tu utilises le Setup.</div>
 
             <div className="hr" />
 
@@ -385,16 +629,16 @@ export default function AdminPage() {
                   <input value={eventEdit.name} onChange={(e) => setEventEdit({ ...eventEdit, name: e.target.value })} />
                 </div>
                 <div className="field">
-                  <label>Logo URL (optionnel)</label>
-                  <input value={eventEdit.logo_url} onChange={(e) => setEventEdit({ ...eventEdit, logo_url: e.target.value })} placeholder="/asset/logo.svg ou https://..." />
+                  <label>Logo URL</label>
+                  <input value={eventEdit.logo_url} onChange={(e) => setEventEdit({ ...eventEdit, logo_url: e.target.value })} />
                 </div>
                 <div className="field" style={{ gridColumn: "1 / -1" }}>
-                  <label>Hero image URL (optionnel)</label>
-                  <input value={eventEdit.hero_image_url} onChange={(e) => setEventEdit({ ...eventEdit, hero_image_url: e.target.value })} placeholder="/asset/eventmain.jpg ou https://..." />
+                  <label>Hero image URL</label>
+                  <input value={eventEdit.hero_image_url} onChange={(e) => setEventEdit({ ...eventEdit, hero_image_url: e.target.value })} />
                 </div>
               </div>
               <div className="row" style={{ marginTop: 10 }}>
-                <button className="btn mf" onClick={saveEvent}>Sauver event</button>
+                <button className="btn mf" onClick={saveEvent} disabled={!event?.id}>Sauver</button>
               </div>
             </div>
 
@@ -413,7 +657,7 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="row" style={{ marginTop: 10 }}>
-                <button className="btn mf" onClick={addEventDay}>Ajouter</button>
+                <button className="btn mf" onClick={addEventDay} disabled={!event?.id}>Ajouter</button>
               </div>
 
               <div className="hr" />
@@ -444,7 +688,7 @@ export default function AdminPage() {
                   <input value={newTag.label} onChange={(e) => setNewTag({ ...newTag, label: e.target.value })} placeholder="Vegan" />
                 </div>
                 <div className="field">
-                  <label>Couleur (hex)</label>
+                  <label>Couleur</label>
                   <input value={newTag.color} onChange={(e) => setNewTag({ ...newTag, color: e.target.value })} placeholder="#2ecc71" />
                 </div>
               </div>
@@ -497,20 +741,20 @@ export default function AdminPage() {
                     value={newItem.price_ht_cents}
                     onChange={(e) => setNewItem({ ...newItem, price_ht_cents: Number(e.target.value || 0) })}
                   />
-                  <div className="small">TTC auto (TVA 10%) : {euros(Math.round(Number(newItem.price_ht_cents || 0) * 1.1))} €</div>
+                  <div className="small">TTC (TVA 10%) : {euros(Math.round(Number(newItem.price_ht_cents || 0) * 1.1))} €</div>
                 </div>
                 <div className="field" style={{ gridColumn: "1 / -1" }}>
                   <label>Description</label>
                   <input value={newItem.description || ""} onChange={(e) => setNewItem({ ...newItem, description: e.target.value })} />
                 </div>
                 <div className="field" style={{ gridColumn: "1 / -1" }}>
-                  <label>Image URL (optionnel)</label>
+                  <label>Image URL</label>
                   <input value={newItem.image_url || ""} onChange={(e) => setNewItem({ ...newItem, image_url: e.target.value })} />
                 </div>
               </div>
 
               <div className="row" style={{ marginTop: 10 }}>
-                <button className="btn mf" onClick={addItem}>Ajouter item</button>
+                <button className="btn mf" onClick={addItem} disabled={!event?.id}>Ajouter item</button>
               </div>
 
               <div className="hr" />
@@ -527,7 +771,6 @@ export default function AdminPage() {
                       </div>
                       <div className="small">{it.description || ""}</div>
                       <TagChips tags={tagsByItemId.get(it.id)} />
-                      <div className="small">{it.image_url ? `image: ${it.image_url}` : ""}</div>
                     </div>
                     <button className="btn secondary" onClick={() => toggleItem(it.id, it.is_active)}>
                       {it.is_active ? "Désactiver" : "Activer"}
