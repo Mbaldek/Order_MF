@@ -1,8 +1,8 @@
 "use client";
 
-import Header from "@/components/Header";
-import TagChips from "@/components/TagChips";
-import { supabase } from "@/lib/supabaseClient";
+import Header from "../../components/Header";
+import TagChips from "../../components/TagChips";
+import { supabase } from "../../lib/supabaseClient";
 import { useEffect, useMemo, useState } from "react";
 
 function euros(cents) {
@@ -21,7 +21,6 @@ export default function AdminPage() {
   const [itemTags, setItemTags] = useState([]);
   const [orderDays, setOrderDays] = useState([]);
 
-  // forms
   const [newDay, setNewDay] = useState({ day_date: "", label: "" });
   const [newTag, setNewTag] = useState({ code: "", label: "", color: "#d47a77" });
   const [newItem, setNewItem] = useState({
@@ -29,16 +28,13 @@ export default function AdminPage() {
     name: "",
     description: "",
     price_ht_cents: 0,
-    price_ttc_cents: 0,
     image_url: "",
-    is_active: true,
   });
 
   async function loadAll() {
     setLoading(true);
     setErr("");
 
-    // event
     const ev = await supabase
       .from("event_config")
       .select("*")
@@ -47,16 +43,8 @@ export default function AdminPage() {
       .limit(1)
       .maybeSingle();
 
-    if (ev.error) {
-      setErr(`Erreur event: ${ev.error.message}`);
-      setLoading(false);
-      return;
-    }
-    if (!ev.data) {
-      setErr("Aucun event actif. (event_config is_active=true)");
-      setLoading(false);
-      return;
-    }
+    if (ev.error) return setErr(`Erreur event: ${ev.error.message}`), setLoading(false);
+    if (!ev.data) return setErr("Aucun event actif. (event_config is_active=true)"), setLoading(false);
 
     const eventId = ev.data.id;
 
@@ -76,10 +64,9 @@ export default function AdminPage() {
     const tg = await supabase.from("tags").select("*").order("code", { ascending: true });
     const mt = await supabase.from("menu_item_tags").select("*");
 
-    // list order_days for dashboard
     const od = await supabase
       .from("order_days")
-      .select("id, created_at, day_date, day_label, entree, plat, dessert, delivery, status, employee_name, proof_url, diet_notes, drinks, orders:orders(order_id:id, company, stand, first_name, last_name, phone, email)")
+      .select("id, created_at, day_date, day_label, entree, plat, dessert, delivery, status, employee_name, proof_url, diet_notes, drinks, orders:orders(id, company, stand, first_name, last_name, phone, email)")
       .order("created_at", { ascending: false })
       .limit(200);
 
@@ -128,7 +115,6 @@ export default function AdminPage() {
     return s;
   }, [orderDays]);
 
-  // --- CRUD helpers
   async function addEventDay() {
     setErr("");
     if (!event?.id) return;
@@ -140,8 +126,8 @@ export default function AdminPage() {
       label: newDay.label,
       is_active: true,
     });
-
     if (res.error) return setErr(res.error.message);
+
     setNewDay({ day_date: "", label: "" });
     loadAll();
   }
@@ -170,7 +156,6 @@ export default function AdminPage() {
     if (!event?.id) return;
     if (!newItem.name) return setErr("Nom item requis.");
 
-    // TVA 10% assumption => TTC auto
     const ht = Number(newItem.price_ht_cents || 0);
     const ttc = Math.round(ht * 1.1);
 
@@ -185,9 +170,9 @@ export default function AdminPage() {
       image_url: newItem.image_url?.trim() || null,
       is_active: true,
     });
-
     if (res.error) return setErr(res.error.message);
-    setNewItem({ category: "plat", name: "", description: "", price_ht_cents: 0, price_ttc_cents: 0, image_url: "", is_active: true });
+
+    setNewItem({ category: "plat", name: "", description: "", price_ht_cents: 0, image_url: "" });
     loadAll();
   }
 
@@ -252,10 +237,8 @@ export default function AdminPage() {
             </div>
 
             <div className="hr" />
-
             <h2 className="h2">Sous-commandes (jour)</h2>
             <div className="small">Dernières 200 lignes</div>
-
             <div className="hr" />
 
             <div style={{ overflowX: "auto" }}>
@@ -302,10 +285,8 @@ export default function AdminPage() {
           <div className="mainCard">
             <h2 className="h2">Configuration</h2>
             <div className="small">CRUD simple pour jours, menus, tags, associations.</div>
-
             <div className="hr" />
 
-            {/* Days */}
             <div style={{ marginBottom: 22 }}>
               <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>Jours</div>
               <div className="grid2">
@@ -336,7 +317,6 @@ export default function AdminPage() {
               ))}
             </div>
 
-            {/* Tags */}
             <div style={{ marginBottom: 22 }}>
               <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>Tags</div>
               <div className="grid2">
@@ -367,7 +347,6 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Items */}
             <div style={{ marginBottom: 22 }}>
               <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>Menu items</div>
               <div className="grid2">
@@ -395,11 +374,11 @@ export default function AdminPage() {
                 </div>
                 <div className="field" style={{ gridColumn: "1 / -1" }}>
                   <label>Description</label>
-                  <input value={newItem.description} onChange={(e) => setNewItem({ ...newItem, description: e.target.value })} />
+                  <input value={newItem.description || ""} onChange={(e) => setNewItem({ ...newItem, description: e.target.value })} />
                 </div>
                 <div className="field" style={{ gridColumn: "1 / -1" }}>
                   <label>Image URL (optionnel)</label>
-                  <input value={newItem.image_url} onChange={(e) => setNewItem({ ...newItem, image_url: e.target.value })} />
+                  <input value={newItem.image_url || ""} onChange={(e) => setNewItem({ ...newItem, image_url: e.target.value })} />
                 </div>
               </div>
 
@@ -427,7 +406,6 @@ export default function AdminPage() {
                     </button>
                   </div>
 
-                  {/* mapping tags */}
                   <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
                     {tags.map((t) => {
                       const current = (tagsByItemId.get(it.id) || []).some((x) => x.id === t.id);
