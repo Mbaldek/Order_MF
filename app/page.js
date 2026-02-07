@@ -1,63 +1,57 @@
-export default function Home() {
-  return (
-    <div className="grid">
-      <div className="card" style={{ padding: 22 }}>
-        <div className="badge">Précommande • Paniers déjeuner</div>
+import Header from "@/components/Header";
+import Link from "next/link";
 
-        <div className="row" style={{ marginTop: 14, alignItems: "center" }}>
-          <div>
-            <h1 className="h1">Gagnez du temps pendant l’évènement.</h1>
+export default function HomePage() {
+  return (
+    <>
+      <Header />
+      <main className="container">
+        <div className="hero">
+          <section className="mainCard">
+            <div className="badge">Maison Félicien • Commandes événement</div>
+            <h1 className="h1">Commandez vos paniers déjeuner à l’avance</h1>
             <p className="p">
-              Commandez à l’avance vos paniers déjeuner (entrée + plat + dessert) pour un ou plusieurs jours.
-              Retrait sur place ou livraison sur votre stand.
+              Pendant l’événement, nous préparons et livrons vos paniers au stand (ou retrait).
+              Vous passez une commande globale, puis une sous-commande par jour pour le suivi opérationnel.
             </p>
 
-            <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <a href="/order"><button className="btn light" style={{ borderRadius: 14, padding: "12px 14px", fontWeight: 850 }}>Passer commande</button></a>
-              <a href="/admin/login"><button className="btn light" style={{ borderRadius: 14, padding: "12px 14px" }}>Espace staff</button></a>
+            <div className="hr" />
+
+            <div className="small">
+              • Déjeuner jour par jour (tracking) • Totaux HT/TTC • Tags (vegan, viande, poisson...) • Allergies/régime
             </div>
-          </div>
+          </section>
 
-          <div>
-            <div style={{
-              border: "1px solid var(--line)",
-              borderRadius: 18,
-              height: 240,
-              background: "linear-gradient(135deg, rgba(212,122,119,.18), rgba(212,122,119,.06))",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--muted)"
-            }}>
-              Visuel (à fournir)
+          <aside className="heroMedia" style={{ overflow: "hidden" }}>
+            {/* Placeholder: mets ton vrai visuel dans public/assets/eventmain.jpg */}
+            <img
+              src="/assets/eventmain.jpg"
+              alt="Event"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+            <div style={{ position: "absolute", padding: 22, textAlign: "center" }}>
+              <div style={{ fontWeight: 900, fontSize: 22, marginBottom: 8 }}>Visuel événement</div>
+              <div className="small">Remplacer /assets/eventmain.jpg</div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="row">
-        <div className="card">
-          <h2 className="h2">Comment ça marche</h2>
-          <div className="grid" style={{ gap: 10 }}>
-            <div className="badge">1 • Choisissez vos jours</div>
-            <div className="badge">2 • Sélectionnez vos menus</div>
-            <div className="badge">3 • Retrait ou livraison</div>
-            <div className="badge">4 • Suivi côté Maison Félicien</div>
-          </div>
+          </aside>
         </div>
 
-        <div className="card">
-          <h2 className="h2">Informations</h2>
-          <p className="p">
-            Les contenus (texte, photos, menus, conditions) seront intégrés ensuite.
-            Ici : une vitrine sobre + un flux de commande opérationnel.
-          </p>
-          <hr className="hr" />
-          <div className="small">
-            Astuce : test rapide → crée une commande sur <b>/order</b>, puis connecte-toi sur <b>/admin/login</b>.
+        {/* CTA en bas */}
+        <div style={{ marginTop: 22 }} className="mainCard">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>Prêt à commander ?</div>
+              <div className="small">Commande multi-jours, suivi jour par jour.</div>
+            </div>
+            <Link className="btn mf" href="/order">Commander</Link>
           </div>
         </div>
-      </div>
-    </div>
+
+        <div className="footer">© {new Date().getFullYear()} Maison Félicien</div>
+      </main>
+    </>
   );
 }
